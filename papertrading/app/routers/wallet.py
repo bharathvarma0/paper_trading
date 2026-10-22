@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy import text
 
 from app.database import engine
-from app.schemas import depositwallet, WalletResponse
+from app.schemas import DepositRequest, TransactionResponse, WalletResponse
 from app.security import get_current_user
 
 router=APIRouter(prefix="/wallet")
@@ -18,8 +18,8 @@ def get_wallet(user_id: int = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="wallet empty or not found")
         return {"balance": balance}
 
-@router.post("/add_funds", response_model=WalletResponse)
-def add_wallet(body: depositwallet, user_id: int = Depends(get_current_user)):
+@router.post("/deposit", response_model=WalletResponse)
+def add_wallet(body: DepositRequest, user_id: int = Depends(get_current_user)):
     with engine.connect() as conn:
         balance=conn.execute(
             text("select balance from wallets where user_id = :id for update"),{"id": user_id}
@@ -40,7 +40,21 @@ def add_wallet(body: depositwallet, user_id: int = Depends(get_current_user)):
         conn.commit()
     return {"balance": new_balance}
 
-        
 
-        
-    
+@router.get("/transactions", response_model=list[TransactionResponse])
+def list_transactions(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user_id: int = Depends(get_current_user),
+):
+    # id DESC breaks ties when two rows share the same created_at.
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                select id, type, amount, balance_after, order_id, created_at
+                from wallet_transactions where user_id = :id
+                order by created_at desc, id desc limit :limit offset :offset
+            """),
+            {"id": user_id, "limit": limit, "offset": offset},
+        ).mappings().all()
+    return rows

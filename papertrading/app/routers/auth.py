@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.database import engine
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
@@ -16,9 +17,14 @@ def create_user(body: RegisterRequest):
         if existing:
             raise HTTPException(status_code=400, detail="User already exist")
 
-        user_id=conn.execute(
-            text("insert into users (email, password_hash) values (:email, :password) returning id"),{"email": body.email, "password": hash_password(body.password)}
-        ).scalar()
+        try:
+            user_id=conn.execute(
+                text("insert into users (email, password_hash) values (:email, :password) returning id"),{"email": body.email, "password": hash_password(body.password)}
+            ).scalar()
+        except IntegrityError:
+            # Two sign-ups with the same email at once both pass the check above;
+            # the UNIQUE constraint stops the second one.
+            raise HTTPException(status_code=400, detail="User already exist")
 
         conn.execute(text("INSERT INTO wallets (user_id) VALUES (:uid)"), {"uid": user_id})
         conn.commit()

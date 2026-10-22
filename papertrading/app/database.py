@@ -1,6 +1,7 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
-DATABASE_URL = "postgresql://neondb_owner:npg_VZiY4h7WtJyl@ep-divine-glitter-aoxz8wsf-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+from app.config import DATABASE_URL
 
-engine= create_engine(DATABASE_URL)
-
+# pool_pre_ping checks a pooled connection before using it; Neon closes idle
+# connections, and without this the first request after a pause would fail.
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)

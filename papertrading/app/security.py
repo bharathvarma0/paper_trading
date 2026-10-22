@@ -26,10 +26,19 @@ def create_token(user_id: int) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+def decode_token(token: str) -> int:
+    """Return the user id in a valid token. Raises jwt.InvalidTokenError (incl. expired).
+
+    Separate from get_current_user so the WebSocket endpoint can check a token
+    that arrives in the URL instead of an Authorization header.
+    """
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    return int(payload["sub"])
+
+
 def get_current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> int:
     try:
-        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return int(payload["sub"])
+        return decode_token(creds.credentials)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:

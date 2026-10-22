@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Trading</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #16181d; --muted: #667085; --border: #e3e6eb;
+    --accent: #2f5bea; --accent-text: #ffffff; --buy: #138a52; --sell: #c2382f;
+    --warn-bg: #fff4e5; --warn-text: #8a4b00; --input: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #181b21; --text: #e8eaee; --muted: #9aa3b2; --border: #2a2f38;
+      --accent: #5b82ff; --accent-text: #0f1115; --buy: #3ccf8e; --sell: #ff6b61;
+      --warn-bg: #3a2a12; --warn-text: #ffcf8a; --input: #11141a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+           padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--card); }
+  header h1 { font-size: 16px; margin: 0; }
+  .tag { font-size: 11px; color: var(--warn-text); background: var(--warn-bg);
+         padding: 2px 8px; border-radius: 999px; margin-left: 8px; font-weight: 500; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px; }
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .stack { display: grid; gap: 16px; min-width: 0; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { min-width: 0; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px;
+                  background: var(--input); color: var(--text); font: inherit; }
+  button { padding: 8px 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--card);
+           color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .big { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .side { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 10px; }
+  .side input { display: none; }
+  .side label { margin: 0; text-align: center; padding: 8px; border: 1px solid var(--border); cursor: pointer;
+                color: var(--text); font-size: 14px; }
+  .side label:first-of-type { border-radius: 7px 0 0 7px; }
+  .side label:last-of-type { border-radius: 0 7px 7px 0; }
+  #side-buy:checked + label { background: var(--buy); border-color: var(--buy); color: #fff; }
+  #side-sell:checked + label { background: var(--sell); border-color: var(--sell); color: #fff; }
+  .msg { margin-top: 10px; font-size: 13px; min-height: 18px; }
+  .msg.error { color: var(--sell); } .msg.ok { color: var(--buy); }
+  .results { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 7px; max-height: 180px; overflow: auto; }
+  .results:empty { display: none; }
+  .results li { padding: 6px 10px; cursor: pointer; display: flex; gap: 8px; }
+  .results li:hover { background: var(--bg); }
+  .results b { min-width: 64px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; }
+  td.num, th.num { text-align: right; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; }
+  .EXECUTED, .pos { color: var(--buy); }
+  .REJECTED, .neg { color: var(--sell); }
+  .PENDING, .CANCELLED { color: var(--muted); }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .head h2 { margin: 0; }
+  .head select { width: auto; }
+  .pager { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; }
+  .live { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .live b { margin-left: auto; font-size: 16px; transition: color .4s; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.on { background: var(--buy); }
+  .auth { max-width: 360px; margin: 60px auto; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Paper Trading <span class="tag">virtual money</span></h1>
+  <div class="row">
+    <span id="user-email" class="muted"></span>
+    <button id="logout" class="hidden">Log out</button>
+  </div>
+</header>
+
+<!-- Logged-out view -->
+<main id="auth-view" class="hidden">
+  <form id="auth-form" class="card auth">
+    <h2>Sign in</h2>
+    <label for="email">Email</label>
+    <input id="email" type="email" required autocomplete="email">
+    <label for="password">Password (min 8 characters)</label>
+    <input id="password" type="password" required minlength="8" autocomplete="current-password">
+    <div class="row" style="margin-top:14px">
+      <button class="primary" type="submit" data-action="login">Log in</button>
+      <button type="submit" data-action="register">Create account</button>
+    </div>
+    <div id="auth-msg" class="msg"></div>
+  </form>
+</main>
+
+<!-- Logged-in view -->
+<main id="app-view" class="hidden">
+  <div class="grid">
+    <div class="stack">
+      <section class="card">
+        <h2>Cash balance</h2>
+        <div id="balance" class="big">–</div>
+        <form id="deposit-form" class="row" style="margin-top:12px">
+          <input id="deposit-amount" type="number" min="0.01" max="100000" step="0.01" placeholder="Amount" required>
+          <button type="submit">Deposit</button>
+        </form>
+        <div id="deposit-msg" class="msg"></div>
+      </section>
+
+      <section class="card">
+        <h2>Trade</h2>
+        <label for="search">Find a symbol</label>
+        <input id="search" placeholder="e.g. apple" autocomplete="off">
+        <ul id="search-results" class="results"></ul>
+
+        <form id="order-form">
+          <label for="symbol">Symbol</label>
+          <div class="row">
+            <input id="symbol" required maxlength="20" placeholder="AAPL" style="text-transform:uppercase">
+            <button type="button" id="quote-btn">Quote</button>
+          </div>
+          <div id="quote" class="muted msg"></div>
+          <div class="live">
+            <span id="live-dot" class="dot"></span>
+            <span id="live-status" class="muted">Live: off</span>
+            <b id="live-price"></b>
+          </div>
+
+          <div class="side">
+            <input type="radio" name="side" id="side-buy" value="BUY" checked><label for="side-buy">Buy</label>
+            <input type="radio" name="side" id="side-sell" value="SELL"><label for="side-sell">Sell</label>
+          </div>
+
+          <label for="quantity">Quantity (whole shares)</label>
+          <input id="quantity" type="number" min="1" step="1" value="1" required>
+          <div id="estimate" class="muted msg"></div>
+
+          <button class="primary" type="submit" id="order-btn" style="width:100%;margin-top:6px">Place market order</button>
+          <div id="order-msg" class="msg"></div>
+        </form>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="card">
+        <div class="head">
+          <h2>Orders</h2>
+          <select id="status-filter" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option>EXECUTED</option><option>REJECTED</option><option>PENDING</option><option>CANCELLED</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Time</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th>Status</th>
+              <th class="num">Price</th><th class="num">Realized P&amp;L</th><th>Note</th>
+            </tr></thead>
+            <tbody id="orders-body"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <button id="orders-prev">Prev</button><span id="orders-page" class="muted"></span><button id="orders-next">Next</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Wallet ledger</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Time</th><th>Type</th><th class="num">Amount</th><th class="num">Balance after</th><th class="num">Order</th>
+            </tr></thead>
+            <tbody id="tx-body"></tbody>
+          </table>
+        </div>
+        <div class="pager">
+          <button id="tx-prev">Prev</button><span id="tx-page" class="muted"></span><button id="tx-next">Next</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+const PAGE_SIZE = 10;
+const $ = (id) => document.getElementById(id);
+
+// sessionStorage: the token is gone when the tab closes. Any script on this page
+// could read it (XSS), which is why every value from the server is rendered with
+// textContent below, never innerHTML.
+const state = {
+  token: sessionStorage.getItem("token"),
+  ordersOffset: 0,
+  txOffset: 0,
+  orderKey: null,  // Idempotency-Key kept across retries of the same order
+  lastPrice: null,
+};
+
+// ---------- API helper ----------
+
+async function api(path, { method = "GET", body, headers = {} } = {}) {
+  const allHeaders = { ...headers };
+  if (body) allHeaders["Content-Type"] = "application/json";
+  if (state.token) allHeaders["Authorization"] = `Bearer ${state.token}`;
+
+  let res;
+  try {
+    res = await fetch(path, { method, headers: allHeaders, body: body ? JSON.stringify(body) : undefined });
+  } catch {
+    const err = new Error("Network error: the server could not be reached");
+    err.network = true;  // we never got an answer, so the request may or may not have run
+    throw err;
+  }
+  const data = await res.json().catch(() => null);
+
+  if (res.status === 401 && state.token) {
+    logout();
+    throw new Error("Session expired, please log in again");
+  }
+  if (!res.ok) throw new Error(errorText(data, res.status));
+  return { data, res };
+}
+
+// The API returns three error shapes: a string, a list (validation), or a rejection object.
+function errorText(data, status) {
+  const d = data && data.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) return d.map((e) => `${e.loc[e.loc.length - 1]}: ${e.msg}`).join("; ");
+  if (d && d.reason) return `Rejected: ${d.reason}`;
+  return `Request failed (${status})`;
+}
+
+function show(el, text, kind = "") {
+  el.textContent = text;
+  el.className = `msg ${kind}`;
+}
+
+// ---------- formatting ----------
+// Money arrives as decimal strings like "549.25". We display them as-is (with
+// separators) and never do money maths in the browser; the server owns the numbers.
+
+function money(value) {
+  if (value === null || value === undefined) return "–";
+  const [whole, frac = ""] = String(value).split(".");
+  const sign = whole.startsWith("-") ? "-" : "";
+  const grouped = whole.replace("-", "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");  // 1234567 -> 1,234,567
+  // Prices have 4 decimals ("150.2500"): drop trailing zeros but always show at least 2.
+  const cents = frac.replace(/0+$/, "").padEnd(2, "0");
+  return `${sign}$${grouped}.${cents}`;
+}
+
+function time(ts) {
+  return ts ? ts.replace("T", " ").slice(0, 19) : "–";
+}
+
+function cell(text, className = "") {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (className) td.className = className;
+  return td;
+}
+
+function badge(text) {
+  const td = document.createElement("td");
+  const span = document.createElement("span");
+  span.className = `badge ${text}`;
+  span.textContent = text;
+  td.append(span);
+  return td;
+}
+
+function emptyRow(tbody, cols, text) {
+  const tr = document.createElement("tr");
+  const td = cell(text, "muted");
+  td.colSpan = cols;
+  tr.append(td);
+  tbody.replaceChildren(tr);
+}
+
+// ---------- auth ----------
+
+$("auth-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const action = e.submitter.dataset.action;
+  const creds = { email: $("email").value, password: $("password").value };
+  try {
+    if (action === "register") await api("/register", { method: "POST", body: creds });
+    const { data } = await api("/login", { method: "POST", body: creds });
+    state.token = data.access_token;
+    sessionStorage.setItem("token", state.token);
+    $("password").value = "";
+    await enterApp();
+  } catch (err) {
+    show($("auth-msg"), err.message, "error");
+  }
+});
+
+function logout() {
+  state.token = null;
+  sessionStorage.removeItem("token");
+  stopLive();
+  $("app-view").classList.add("hidden");
+  $("logout").classList.add("hidden");
+  $("user-email").textContent = "";
+  $("auth-view").classList.remove("hidden");
+}
+$("logout").addEventListener("click", logout);
+
+async function enterApp() {
+  const { data: me } = await api("/me");
+  $("user-email").textContent = me.email;
+  $("auth-view").classList.add("hidden");
+  $("app-view").classList.remove("hidden");
+  $("logout").classList.remove("hidden");
+  state.ordersOffset = state.txOffset = 0;
+  connectLive();
+  await refreshAll();
+}
+
+// ---------- wallet ----------
+
+async function loadWallet() {
+  const { data } = await api("/wallet");
+  $("balance").textContent = money(data.balance);
+}
+
+$("deposit-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    // Sent as a string so "0.10" reaches the server exactly, not as a float.
+    await api("/wallet/deposit", { method: "POST", body: { amount: $("deposit-amount").value } });
+    $("deposit-amount").value = "";
+    show($("deposit-msg"), "Deposit added", "ok");
+    state.txOffset = 0;
+    await Promise.all([loadWallet(), loadTransactions()]);
+  } catch (err) {
+    show($("deposit-msg"), err.message, "error");
+  }
+});
+
+// ---------- market data ----------
+
+let searchTimer;
+$("search").addEventListener("input", () => {
+  // Debounce: wait until typing pauses, so we do not burn the Finnhub rate limit per keystroke.
+  clearTimeout(searchTimer);
+  const q = $("search").value.trim();
+  if (q.length < 2) return $("search-results").replaceChildren();
+  searchTimer = setTimeout(() => runSearch(q), 400);
+});
+
+async function runSearch(q) {
+  try {
+    const { data } = await api(`/search?q=${encodeURIComponent(q)}`);
+    const items = data.slice(0, 8).map((r) => {
+      const li = document.createElement("li");
+      const sym = document.createElement("b");
+      sym.textContent = r.symbol;
+      const desc = document.createElement("span");
+      desc.className = "muted";
+      desc.textContent = r.description;
+      li.append(sym, desc);
+      li.addEventListener("click", () => {
+        $("symbol").value = r.symbol;
+        $("search").value = "";
+        $("search-results").replaceChildren();
+        loadQuote();
+      });
+      return li;
+    });
+    $("search-results").replaceChildren(...items);
+  } catch (err) {
+    $("search-results").replaceChildren();
+    show($("quote"), err.message, "error");
+  }
+}
+
+async function loadQuote() {
+  const symbol = $("symbol").value.trim().toUpperCase();
+  if (!symbol) return;
+  state.lastPrice = null;
+  watchSymbol(symbol);  // start live updates even if the REST quote fails (e.g. crypto symbols)
+  try {
+    const { data } = await api(`/quote/${encodeURIComponent(symbol)}`);
+    state.lastPrice = data.price;
+    show($("quote"), `${data.symbol}: ${money(data.price)} (prev close ${money(data.previous_close)})`);
+  } catch (err) {
+    show($("quote"), err.message, "error");
+  }
+  updateEstimate();
+}
+$("quote-btn").addEventListener("click", loadQuote);
+
+function updateEstimate() {
+  const qty = parseInt($("quantity").value, 10);
+  if (!state.lastPrice || !(qty > 0)) return show($("estimate"), "");
+  // Display-only estimate; the server computes the real amount with Decimal at execution time.
+  const est = (Number(state.lastPrice) * qty).toFixed(2);
+  show($("estimate"), `Estimated ${$("side-buy").checked ? "cost" : "proceeds"}: ≈ ${money(est)}`);
+}
+$("quantity").addEventListener("input", updateEstimate);
+document.querySelectorAll('input[name="side"]').forEach((r) => r.addEventListener("change", updateEstimate));
+
+// ---------- orders ----------
+
+// Changing the order form means it is a NEW order, so it needs a new key.
+["symbol", "quantity"].forEach((id) => $(id).addEventListener("input", () => (state.orderKey = null)));
+document.querySelectorAll('input[name="side"]').forEach((r) => r.addEventListener("change", () => (state.orderKey = null)));
+$("symbol").addEventListener("change", loadQuote);
+
+$("order-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = {
+    symbol: $("symbol").value.trim().toUpperCase(),
+    side: document.querySelector('input[name="side"]:checked').value,
+    quantity: parseInt($("quantity").value, 10),
+  };
+  // Reuse the key if the last attempt got no answer: retrying is then safe, the
+  // server returns the original order instead of buying twice.
+  state.orderKey = state.orderKey || crypto.randomUUID();
+  $("order-btn").disabled = true;
+  try {
+    const { data, res } = await api("/orders", {
+      method: "POST", body, headers: { "Idempotency-Key": state.orderKey },
+    });
+    const replay = res.headers.get("Idempotent-Replayed") === "true";
+    show($("order-msg"),
+      `${replay ? "Already placed: " : ""}${data.side} ${data.quantity} ${data.symbol} @ ${money(data.executed_price)}`, "ok");
+    state.orderKey = null;
+  } catch (err) {
+    show($("order-msg"), err.network ? `${err.message}. Press again to retry safely.` : err.message, "error");
+    if (!err.network) state.orderKey = null;  // the server answered; this attempt is final
+  } finally {
+    $("order-btn").disabled = false;
+    state.ordersOffset = state.txOffset = 0;
+    refreshAll();
+  }
+});
+
+async function loadOrders() {
+  const status = $("status-filter").value;
+  const params = new URLSearchParams({ limit: PAGE_SIZE, offset: state.ordersOffset });
+  if (status) params.set("status", status);
+  const { data } = await api(`/orders?${params}`);
+
+  if (!data.length) emptyRow($("orders-body"), 8, "No orders yet");
+  else $("orders-body").replaceChildren(...data.map((o) => {
+    const tr = document.createElement("tr");
+    const pnl = o.realized_pnl;
+    tr.append(
+      cell(time(o.executed_at || o.created_at)),
+      cell(o.symbol),
+      cell(o.side, o.side === "BUY" ? "pos" : "neg"),
+      cell(o.quantity, "num"),
+      badge(o.status),
+      cell(money(o.executed_price), "num"),
+      cell(pnl === null ? "–" : money(pnl), `num ${pnl && pnl.startsWith("-") ? "neg" : pnl ? "pos" : ""}`),
+      cell(o.rejection_reason || "", "muted"),
+    );
+    return tr;
+  }));
+  pager("orders", state.ordersOffset, data.length);
+}
+
+$("status-filter").addEventListener("change", () => { state.ordersOffset = 0; loadOrders(); });
+$("orders-prev").addEventListener("click", () => { state.ordersOffset -= PAGE_SIZE; loadOrders(); });
+$("orders-next").addEventListener("click", () => { state.ordersOffset += PAGE_SIZE; loadOrders(); });
+
+// ---------- ledger ----------
+
+async function loadTransactions() {
+  const { data } = await api(`/wallet/transactions?limit=${PAGE_SIZE}&offset=${state.txOffset}`);
+  if (!data.length) emptyRow($("tx-body"), 5, "No transactions yet");
+  else $("tx-body").replaceChildren(...data.map((t) => {
+    const tr = document.createElement("tr");
+    const out = t.type === "BUY";  // money leaving the wallet
+    tr.append(
+      cell(time(t.created_at)),
+      cell(t.type),
+      cell(`${out ? "−" : "+"}${money(t.amount)}`, `num ${out ? "neg" : "pos"}`),
+      cell(money(t.balance_after), "num"),
+      cell(t.order_id ? `#${t.order_id}` : "–", "num muted"),
+    );
+    return tr;
+  }));
+  pager("tx", state.txOffset, data.length);
+}
+
+$("tx-prev").addEventListener("click", () => { state.txOffset -= PAGE_SIZE; loadTransactions(); });
+$("tx-next").addEventListener("click", () => { state.txOffset += PAGE_SIZE; loadTransactions(); });
+
+// A short page means there is nothing after it.
+function pager(prefix, offset, count) {
+  $(`${prefix}-prev`).disabled = offset === 0;
+  $(`${prefix}-next`).disabled = count < PAGE_SIZE;
+  $(`${prefix}-page`).textContent = `Page ${offset / PAGE_SIZE + 1}`;
+}
+
+// ---------- live prices (WebSocket) ----------
+
+const live = { ws: null, symbol: null, retryMs: 1000, lastPrice: null };
+
+function connectLive() {
+  if (!state.token || live.ws) return;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  // Browsers cannot send an Authorization header on a WebSocket, so the JWT goes in the URL.
+  const ws = new WebSocket(`${proto}://${location.host}/ws/prices?token=${encodeURIComponent(state.token)}`);
+  live.ws = ws;
+
+  ws.onopen = () => {
+    live.retryMs = 1000;
+    setLive(true, "Live");
+    if (live.symbol) ws.send(JSON.stringify({ action: "subscribe", symbol: live.symbol }));
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "price" && msg.symbol === live.symbol) showLivePrice(msg.price);
+    else if (msg.type === "error") setLive(true, `Live: ${msg.message}`);
+  };
+
+  ws.onclose = (event) => {
+    if (live.ws !== ws) return;  // we closed it on purpose (logout)
+    live.ws = null;
+    if (event.code === 1008) return setLive(false, "Live: not authorized");
+    // Reconnect with backoff (1s, 2s, 4s ... 30s) so a server restart does not need a page reload.
+    setLive(false, "Live: reconnecting…");
+    setTimeout(connectLive, live.retryMs);
+    live.retryMs = Math.min(live.retryMs * 2, 30000);
+  };
+}
+
+function watchSymbol(symbol) {
+  if (symbol === live.symbol) return;
+  const open = live.ws && live.ws.readyState === WebSocket.OPEN;
+  if (open && live.symbol) live.ws.send(JSON.stringify({ action: "unsubscribe", symbol: live.symbol }));
+  if (open) live.ws.send(JSON.stringify({ action: "subscribe", symbol }));
+  live.symbol = symbol;  // if not open yet, onopen subscribes it
+  live.lastPrice = null;
+  $("live-price").textContent = "";
+  $("live-status").textContent = `Live ${symbol}: waiting for a trade…`;
+}
+
+function showLivePrice(price) {
+  const el = $("live-price");
+  // Comparing as numbers here only picks a colour; nothing is calculated with it.
+  if (live.lastPrice !== null) el.className = Number(price) >= Number(live.lastPrice) ? "pos" : "neg";
+  live.lastPrice = price;
+  el.textContent = money(price);
+  $("live-status").textContent = `Live ${live.symbol}`;
+  state.lastPrice = price;  // keep the cost estimate in step with the market
+  updateEstimate();
+}
+
+function setLive(on, text) {
+  $("live-dot").classList.toggle("on", on);
+  $("live-status").textContent = text;
+}
+
+function stopLive() {
+  const ws = live.ws;
+  live.ws = null;
+  live.symbol = null;
+  if (ws) ws.close();
+  setLive(false, "Live: off");
+  $("live-price").textContent = "";
+}
+
+async function refreshAll() {
+  try {
+    await Promise.all([loadWallet(), loadOrders(), loadTransactions()]);
+  } catch (err) {
+    show($("order-msg"), err.message, "error");
+  }
+}
+
+// ---------- start ----------
+if (state.token) enterApp().catch(logout);
+else logout();
+</script>
+</body>
+</html>
